@@ -279,171 +279,140 @@ def panel():
     html += "</div>"
     return html
 # -------- ADDRESS --------
-@ShopBoss.route("/address", methods=["GET","POST"])
+from flask import request, session, redirect, send_from_directory
+
+# ✅ QR ROUTE (since qr.png is in main folder)
+@ShopBoss.route('/qr.png')
+def qr():
+    return send_from_directory('.', 'qr.png')
+
+
+# ✅ ADDRESS + PAYMENT PAGE
+@ShopBoss.route("/address", methods=["GET", "POST"])
 def address():
 
-    # अगर cart empty है → home पर भेजो
-    if not session.get("cart"):
-        return redirect("/")
-
     if request.method == "POST":
+        name = request.form.get("name")
+        mobile = request.form.get("mobile")
+        address = request.form.get("address")
+        payment = request.form.get("payment")
 
-        # login check
-        if "user" not in session:
-            return redirect("/login")
+        cart = session.get("cart", {})
 
-        mobile = request.form.get("mobile", "").strip()
-        address = request.form.get("address", "").strip()
-        payment = request.form.get("payment", "").strip()
-
-        # -------- VALIDATION --------
-        if not mobile.isdigit() or len(mobile) != 10:
-            return "<h3 style='color:red;'>❌ Enter valid 10-digit mobile number</h3><a href='/address'>Go Back</a>"
-
-        if not address:
-            return "<h3 style='color:red;'>❌ Address required</h3><a href='/address'>Go Back</a>"
-
-        # -------- MESSAGE --------
-        message = f"""New Order
-
-User: {session.get('user')}
-Mobile: {mobile}
-Address: {address}
-Payment: {payment}
-
-Items:
-"""
-
+        # Convert product IDs to names (IMPORTANT FIX)
+        product_details = []
         conn = db()
-        total = 0
+        cur = conn.cursor()
 
-        for pid, qty in session.get("cart", {}).items():
-            p = conn.execute(
-                "SELECT name, price FROM products WHERE id=?",
-                (pid,)
-            ).fetchone()
-
-            if p:
-                name, price = p
-                total += price * qty
-                message += f"{name} (₹{price}) - Qty: {qty}\n"
+        for pid, qty in cart.items():
+            cur.execute("SELECT name FROM products WHERE id=?", (pid,))
+            product = cur.fetchone()
+            if product:
+                product_details.append(f"{product[0]} (x{qty})")
 
         conn.close()
 
-        message += f"\nTotal: ₹{total}"
+        order_summary = ", ".join(product_details)
 
-        # -------- EMAIL SEND --------
-        import requests
+        message = f"""
+✅ ORDER CONFIRMED
 
-        r = requests.post(
-            "https://api.emailjs.com/api/v1.0/email/send",
-            headers={"Content-Type": "application/json"},
-            json={
-                "service_id": "service_shopboss",
-                "template_id": "template_shopboss",
-                "user_id": "9bTfVOFVe_u1Mt51L",
-                "template_params": {
-                    "name": session.get("user"),
-                    "email": "kfayizwani@gmail.com",
-                    "message": message
-                }
-            }
-        )
+👤 Name: {name}
+📞 Mobile: {mobile}
+🏠 Address: {address}
 
-        print(r.text)
+🛒 Products:
+{order_summary}
 
-        # -------- CLEAR CART --------
-        session["cart"] = {}
+💳 Payment: {payment}
+"""
 
-        # -------- SUCCESS UI --------
+        print(message)  # You can replace with email/WhatsApp later
+
+        session["cart"] = {}  # clear cart
+
         return f"""
-        <div style="background:#eaeded;height:100vh;display:flex;justify-content:center;align-items:center;">
-            <div style="background:white;padding:40px;width:500px;border-radius:10px;text-align:center;">
-                
-                <div style="font-size:60px;color:green;">✔</div>
-
-                <h2 style="color:#067d62;">Order Placed Successfully</h2>
-
-                <p><b>Mobile:</b> {mobile}</p>
-                <p><b>Total Paid:</b> ₹{total}</p>
-
-                <a href="/" style="display:inline-block;margin-top:20px;background:#ffd814;padding:12px 20px;color:black;text-decoration:none;">
-                    Continue Shopping
-                </a>
-
-            </div>
+        <h2 style="text-align:center;">✅ Order Placed Successfully</h2>
+        <p style="text-align:center;">{message}</p>
+        <div style="text-align:center;">
+            <a href="/">Continue Shopping</a>
         </div>
         """
 
-    # -------- FORM UI --------
+    # ✅ FRONTEND UI
     return """
-<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f2f2f2;">
-    <form method="post" style="background:white;padding:30px;width:350px;">
-        
-        <h2 style="text-align:center;">Checkout</h2>
+    <h2 style="text-align:center;">Enter Delivery Details</h2>
 
-        <input name="mobile" placeholder="Enter Mobile Number"
-        style="width:100%;margin:10px 0;padding:8px;" required>
+    <form method="POST" style="width:300px;margin:auto;">
 
-        <input name="address" placeholder="Enter Address"
-        style="width:100%;margin:10px 0;padding:8px;" required>
-        
+        <input type="text" name="name" placeholder="Full Name" required
+        style="width:100%;padding:10px;margin:5px;"><br>
 
-        <h3>Payment Options</h3>
+        <input type="text" name="mobile" placeholder="Mobile Number" required
+        style="width:100%;padding:10px;margin:5px;"><br>
 
-        <div style="margin:10px 0;">
-            <input type="radio" name="payment" value="Cash on Delivery" onclick="codSelected()" required> Cash on Delivery<br><br>
+        <textarea name="address" placeholder="Full Address" required
+        style="width:100%;padding:10px;margin:5px;"></textarea><br>
 
-            <input type="radio" name="payment" value="Online Payment" onclick="showQR()"> Online Payment
-        </div>
+        <h3>Select Payment Method</h3>
 
-        <!-- QR -->
+        <input type="radio" name="payment" value="Cash on Delivery" onclick="codSelected()" required> COD<br>
+
+        <input type="radio" name="payment" value="Online Payment" onclick="showQR()"> Online Payment<br>
+
         <div id="qrBox" style="display:none;text-align:center;">
-            <img src=/Shopboss/qr.png" style="width:200px;margin-top:10px;">
             <p>Scan & Pay</p>
 
-            <button type="button" onclick="confirmPayment()"
-            style="background:#28a745;color:white;padding:8px;border:none;">
-                Confirm Payment
+            <img src="/qr.png"
+                 style="width:200px;margin-top:10px;"
+                 onerror="this.src='https://via.placeholder.com/200?text=QR+Missing'">
+
+            <br><br>
+
+            <button type="button" onclick="confirmPayment()">
+                I Have Paid
             </button>
         </div>
 
-        <button id="placeOrderBtn"
-        style="width:100%;padding:10px;margin-top:15px;background:#ffd814;border:none;">
-            Place Order
-        </button>
+        <br>
+
+        <button type="submit" id="placeOrderBtn">Place Order</button>
+
     </form>
-</div>
 
-<script>
-let paid = false;
+    <script>
+    document.addEventListener("DOMContentLoaded", function(){
 
-function showQR(){
-    document.getElementById("qrBox").style.display = "block";
-    document.getElementById("placeOrderBtn").disabled = true;
-}
+        let paid = false;
 
-function confirmPayment(){
-    paid = true;
-    document.getElementById("placeOrderBtn").disabled = false;
-    alert("Payment Confirmed ✅");
-}
+        window.showQR = function(){
+            document.getElementById("qrBox").style.display = "block";
+            document.getElementById("placeOrderBtn").disabled = true;
+        }
 
-function codSelected(){
-    document.getElementById("qrBox").style.display = "none";
-    document.getElementById("placeOrderBtn").disabled = false;
-}
+        window.confirmPayment = function(){
+            paid = true;
+            document.getElementById("placeOrderBtn").disabled = false;
+            alert("Payment Confirmed ✅");
+        }
 
-document.querySelector("form").onsubmit = function(){
-    let p = document.querySelector('input[name="payment"]:checked');
+        window.codSelected = function(){
+            document.getElementById("qrBox").style.display = "none";
+            document.getElementById("placeOrderBtn").disabled = false;
+        }
 
-    if(p && p.value === "Online Payment" && !paid){
-        alert("Confirm QR payment first!");
-        return false;
-    }
-}
-</script>
-"""
+        document.querySelector("form").onsubmit = function(){
+            let p = document.querySelector('input[name="payment"]:checked');
+
+            if(p && p.value === "Online Payment" && !paid){
+                alert("Please confirm QR payment first!");
+                return false;
+            }
+        }
+
+    });
+    </script>
+    """
 # ================== #
 conn = db()
 conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, password TEXT)")
