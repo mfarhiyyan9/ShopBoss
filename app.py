@@ -399,7 +399,7 @@ Items:
 
         <!-- QR -->
         <div id="qrBox" style="display:none;text-align:center;">
-            <img src=/qr.png" style="width:200px;margin-top:10px;">
+            <img src=/Shopboss/qr.png" style="width:200px;margin-top:10px;">
             <p>Scan & Pay</p>
 
             <button type="button" onclick="confirmPayment()"
