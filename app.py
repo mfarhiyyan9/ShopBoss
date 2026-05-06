@@ -2,6 +2,19 @@ from flask import Flask, request, redirect, session
 import sqlite3
 import requests
 
+def init_db():
+    conn = sqlite3.connect("shopboss.db")
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        price INTEGER,
+        image TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
 ShopBoss = Flask(__name__)
 ShopBoss.secret_key = "secret123"
 
@@ -184,16 +197,24 @@ def remove(id):
     session["cart"] = cart
     return redirect("/cart")
 # -------- LOGIN --------
-@ShopBoss.route("/admin", methods=["GET","POST"])
-def admin():
+@ShopBoss.route("/login", methods=["GET","POST"])
+def login():
     if request.method == "POST":
-        if (request.form["u"] in ["admin"]) and (request.form["p"] in ["admin","owner"]):
-            session["admin"] = True   # ✅ THIS WAS MISSING
-            return redirect("/panel")
+        conn = db()
+        user = conn.execute("SELECT * FROM users WHERE username=? AND password=?",
+                            (request.form["u"], request.form["p"])).fetchone()
+        conn.close()
 
-    return form_ui("----------Admin Login---------", [
-        '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;">',
-        '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;">'
+        if user:
+            session["user"] = request.form["u"]
+            return redirect("/")
+
+        return "INVALID LOGIN"
+        
+
+    return form_ui("----------User Login---------", [
+        '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;"required>',
+        '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;"required>'
     ], "LOGIN")
 # -------- SIGNUP --------
 @ShopBoss.route("/signup", methods=["GET","POST"])
@@ -207,250 +228,250 @@ def signup():
         return redirect("/login")
 
     return form_ui("----------User Sign Up---------", [
-        '<input name="m" placeholder="Mobile No" style="width:100%;padding:10px;margin:10px 0;">',
-        '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;">',
-        '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;">'
+        '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;"required>',
+        '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;"required>'
     ], "SIGN UP")
 
 # -------- ADMIN --------
 @ShopBoss.route("/admin", methods=["GET","POST"])
 def admin():
     if request.method == "POST":
-        if (request.form["u"] in ["admin","owner"]) and (request.form["p"] in ["admin","owner"]):
+        if (request.form["s"] in ["fayiz"]):
             return redirect("/panel")
 
     return form_ui("----------Admin Login---------", [
-        '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;">',
-        '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;">'
+        '<input name="s" type="password" placeholder="Secret Key" style="width:100%;padding:10px;margin:10px 0;"required>',
+        # '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;">'
     ], "LOGIN")
 
 # -------- PANEL --------
-
-@ShopBoss.route("/panel", methods=["GET", "POST"])
+@ShopBoss.route("/panel", methods=["GET","POST"])
 def panel():
-    # 🔒 Protect panel (optional but recommended)
-    if session.get("admin") != True:
-        return redirect("/admin")
-
     conn = db()
 
     if request.method == "POST":
-        action = request.form.get("action")
 
-        name = request.form.get("name")
-        price = request.form.get("price")
-        image = request.form.get("image")
-        pid = request.form.get("id")
-
-        # 🟢 ADD PRODUCT
-        if action == "add":
+        # ADD PRODUCT
+        if "add" in request.form:
             conn.execute(
                 "INSERT INTO products (name,price,image) VALUES (?,?,?)",
-                (name, price, image)
+                (request.form["name"], request.form["price"], request.form["image"])
             )
 
-        # 🔴 DELETE PRODUCT
-        elif action == "delete":
-            conn.execute(
-                "DELETE FROM products WHERE id=?",
-                (pid,)
-            )
-
-        # 🔵 UPDATE PRODUCT (FIXED ✅)
-        elif action == "update":
+        # UPDATE PRODUCT
+        elif "update" in request.form:
             conn.execute(
                 "UPDATE products SET name=?, price=?, image=? WHERE id=?",
-                (name, price, image, pid)
+                (request.form["name"], request.form["price"], request.form["image"], request.form["id"])
             )
 
-        conn.commit()
+        # DELETE PRODUCT
+        elif "delete" in request.form:
+            conn.execute(
+                "DELETE FROM products WHERE id=?",
+                (request.form["id"],)
+            )
+
+        conn.commit()   # ✅ commit for all actions
 
     products = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
 
-    # 🖼️ UI
-    html = header() + """
-    <div style='padding:30px;background:#eaeded;'>
+    html = header() + "<div style='padding:30px;'>"
 
-    <h2>Admin Panel</h2>
-
-    <!-- ADD PRODUCT -->
-    <form method="post" style="background:white;padding:15px;margin-bottom:20px;">
-        <h3>Add Product</h3>
-        <input name="name" placeholder="Product Name" required style="padding:8px;margin:5px;">
-        <input name="price" placeholder="Price" required style="padding:8px;margin:5px;">
-        <input name="image" placeholder="Image URL" required style="padding:8px;margin:5px;">
-        <button name="action" value="add" style="padding:8px 15px;background:green;color:white;border:none;">
-            Add
-        </button>
-    </form>
-
-    <hr>
+    # ADD FORM
+    html += """
+    <form method="post">
+        <input name="name" placeholder="Name" required>
+        <input name="price" placeholder="Price" required>
+        <input name="image" placeholder="Image URL" required>
+        <button name="add">Add</button>
+    </form><hr>
     """
 
-    # 📦 PRODUCT LIST
+    # PRODUCT LIST
     for p in products:
         html += f"""
-        <form method="post" style="background:white;margin:10px;padding:15px;display:flex;align-items:center;gap:10px;">
-
+        <form method="post">
             <input type="hidden" name="id" value="{p[0]}">
 
-            <img src="{p[3]}" style="width:80px;height:80px;object-fit:cover;">
+            <input name="name" value="{p[1]}" required>
+            <input name="price" value="{p[2]}" required>
+            <input name="image" value="{p[3]}" required>
 
-            <input name="name" value="{p[1]}" style="padding:5px;width:150px;">
-            <input name="price" value="{p[2]}" style="padding:5px;width:80px;">
-            <input name="image" value="{p[3]}" style="padding:5px;width:200px;">
-
-            <button name="action" value="update"
-                style="background:blue;color:white;padding:6px 12px;border:none;">
-                Update
-            </button>
-
-            <button name="action" value="delete"
-                style="background:red;color:white;padding:6px 12px;border:none;">
-                Delete
-            </button>
-
+            <button name="update">Update</button>
+            <button name="delete">Delete</button>
         </form>
+        <hr>
         """
 
     html += "</div>"
     return html
-    #--- ADDRESS --------
-from flask import request, session, redirect, send_from_directory
-
-# ✅ QR ROUTE (since qr.png is in main folder)
-@ShopBoss.route('/qr.png')
-def qr():
-    return send_from_directory('.', 'qr.png')
-
-
-# ✅ ADDRESS + PAYMENT PAGE
-@ShopBoss.route("/address", methods=["GET", "POST"])
+# -------- ADDRESS --------
+@ShopBoss.route("/address", methods=["GET","POST"])
 def address():
 
+    if not session.get("cart"):
+        return redirect("/")
+
     if request.method == "POST":
-        name = request.form.get("name")
-        mobile = request.form.get("mobile")
-        address = request.form.get("address")
-        payment = request.form.get("payment")
 
-        cart = session.get("cart", {})
+        # login check
+        if "user" not in session:
+            return redirect("/login")
 
-        # Convert product IDs to names (IMPORTANT FIX)
-        product_details = []
+        mobile = request.form.get("mobile", "").strip()
+        address = request.form.get("address", "").strip()
+        payment = request.form.get("payment", "").strip()
+
+        # -------- VALIDATION --------
+        if not mobile.isdigit() or len(mobile) != 10:
+            return "<h3 style='color:red;'>❌ Enter valid 10-digit mobile number</h3><a href='/address'>Go Back</a>"
+
+        if not address:
+            return "<h3 style='color:red;'>❌ Address required</h3><a href='/address'>Go Back</a>"
+
+        # -------- MESSAGE --------
+        message = f""" You Received A New Order
+
+User: {session.get('user')}\n
+Mobile: {mobile}\n
+Address: {address}\n
+Payment: {payment}\n
+
+Items:
+"""
+
         conn = db()
-        cur = conn.cursor()
+        total = 0
 
-        for pid, qty in cart.items():
-            cur.execute("SELECT name FROM products WHERE id=?", (pid,))
-            product = cur.fetchone()
-            if product:
-                product_details.append(f"{product[0]} (x{qty})")
+        for pid, qty in session.get("cart", {}).items():
+            p = conn.execute(
+                "SELECT name, price FROM products WHERE id=?",
+                (pid,)
+            ).fetchone()
+
+            if p:
+                name, price = p
+                total += price * qty
+                message += f"{name} (₹{price}) - Qty: {qty}\n"
 
         conn.close()
 
-        order_summary = ", ".join(product_details)
+        message += f"Total: ₹{total}"
 
-        message = f"""
-✅ ORDER CONFIRMED
+        # -------- EMAIL SEND --------
+        import requests
 
-👤 Name: {name}
-📞 Mobile: {mobile}
-🏠 Address: {address}
+        r = requests.post(
+            "https://api.emailjs.com/api/v1.0/email/send",
+            headers={"Content-Type": "application/json"},
+            json={
+                "service_id": "service_shopboss",
+                "template_id": "template_shopboss",
+                "user_id": "9bTfVOFVe_u1Mt51L",
+                "template_params": {
+                    "name": session.get("user"),
+                    "email": "kfayizwani@gmail.com",
+                    "message": message
+                }
+            }
+        )
 
-🛒 Products:
-{order_summary}
+        print(r.text)
 
-💳 Payment: {payment}
-"""
+        # -------- CLEAR CART --------
+        session["cart"] = {}
 
-        print(message)  # You can replace with email/WhatsApp later
-
-        session["cart"] = {}  # clear cart
-
+        # -------- SUCCESS UI --------
         return f"""
-        <h2 style="text-align:center;">✅ Order Placed Successfully</h2>
-        <p style="text-align:center;">{message}</p>
-        <div style="text-align:center;">
-            <a href="/">Continue Shopping</a>
+        <div style="background:#eaeded;height:100vh;display:flex;justify-content:center;align-items:center;">
+            <div style="background:white;padding:40px;width:500px;border-radius:10px;text-align:center;">
+                
+                <div style="font-size:60px;color:green;">✔</div>
+
+                <h2 style="color:#067d62;">Order Placed Successfully</h2>
+
+                <p><b>Mobile:</b> {mobile}</p>
+                <p><b>Total Paid:</b> ₹{total}</p>
+
+                <a href="/" style="display:inline-block;margin-top:20px;background:#ffd814;padding:12px 20px;color:black;text-decoration:none;">
+                    Continue Shopping
+                </a>
+
+            </div>
         </div>
         """
 
-    # ✅ FRONTEND UI
+    # -------- FORM UI --------
     return """
-    <h2 style="text-align:center;">Enter Delivery Details</h2>
+<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f2f2f2;">
+    <form method="post" style="background:white;padding:30px;width:350px;">
+        
+        <h2 style="text-align:center;">Checkout</h2>
 
-    <form method="POST" style="width:300px;margin:auto;">
+        <input name="mobile" placeholder="Enter Mobile Number"
+        style="width:100%;margin:10px 0;padding:8px;" required>
 
-        <input type="text" name="name" placeholder="Full Name" required
-        style="width:100%;padding:10px;margin:5px;"><br>
+        <input name="address" placeholder="Enter Address"
+        style="width:100%;margin:10px 0;padding:8px;" required>
+        
 
-        <input type="text" name="mobile" placeholder="Mobile Number" required
-        style="width:100%;padding:10px;margin:5px;"><br>
+        <h3>Payment Options</h3>
 
-        <textarea name="address" placeholder="Full Address" required
-        style="width:100%;padding:10px;margin:5px;"></textarea><br>
+        <div style="margin:10px 0;">
+            <input type="radio" name="payment" value="Cash on Delivery" onclick="codSelected()" required> Cash on Delivery<br><br>
 
-        <h3>Select Payment Method</h3>
+            <input type="radio" name="payment" value="Online Payment" onclick="showQR()"> Online Payment
+        </div>
 
-        <input type="radio" name="payment" value="Cash on Delivery" onclick="codSelected()" required> COD<br>
-
-        <input type="radio" name="payment" value="Online Payment" onclick="showQR()"> Online Payment<br>
-
+        <!-- QR -->
         <div id="qrBox" style="display:none;text-align:center;">
+            <img src="/static/qr.png" style="width:200px;margin-top:10px;">
             <p>Scan & Pay</p>
 
-            <img src="/qr.png"
-                 style="width:200px;margin-top:10px;"
-                 onerror="this.src='https://via.placeholder.com/200?text=QR+Missing'">
-
-            <br><br>
-
-            <button type="button" onclick="confirmPayment()">
-                I Have Paid
+            <button type="button" onclick="confirmPayment()"
+            style="background:#ffd814;color:black;padding:8px;border:none;">
+                Confirm Payment
             </button>
         </div>
 
-        <br>
-
-        <button type="submit" id="placeOrderBtn">Place Order</button>
-
+        <button id="placeOrderBtn"
+        style="width:100%;padding:10px;margin-top:15px;background:#ffd814;border:none;">
+            Place Order
+        </button>
     </form>
+</div>
 
-    <script>
-    document.addEventListener("DOMContentLoaded", function(){
+<script>
+let paid = false;
 
-        let paid = false;
+function showQR(){
+    document.getElementById("qrBox").style.display = "block";
+    document.getElementById("placeOrderBtn").disabled = true;
+}
 
-        window.showQR = function(){
-            document.getElementById("qrBox").style.display = "block";
-            document.getElementById("placeOrderBtn").disabled = true;
-        }
+function confirmPayment(){
+    paid = true;
+    document.getElementById("placeOrderBtn").disabled = false;
+    alert("Payment Confirmed ✅");
+}
 
-        window.confirmPayment = function(){
-            paid = true;
-            document.getElementById("placeOrderBtn").disabled = false;
-            alert("Payment Confirmed ✅");
-        }
+function codSelected(){
+    document.getElementById("qrBox").style.display = "none";
+    document.getElementById("placeOrderBtn").disabled = false;
+}
 
-        window.codSelected = function(){
-            document.getElementById("qrBox").style.display = "none";
-            document.getElementById("placeOrderBtn").disabled = false;
-        }
+document.querySelector("form").onsubmit = function(){
+    let p = document.querySelector('input[name="payment"]:checked');
 
-        document.querySelector("form").onsubmit = function(){
-            let p = document.querySelector('input[name="payment"]:checked');
-
-            if(p && p.value === "Online Payment" && !paid){
-                alert("Please confirm QR payment first!");
-                return false;
-            }
-        }
-
-    });
-    </script>
-    """
+    if(p && p.value === "Online Payment" && !paid){
+        alert("Confirm QR payment first!");
+        return false;
+    }
+}
+</script>
+"""
 # ================== #
 conn = db()
 conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, password TEXT)")
@@ -458,6 +479,7 @@ conn.commit()
 conn.close()
 # -------- RUN --------
 if __name__ == "__main__":
+    init_db()
     ShopBoss.run(debug=True)
 
-# 9bTfVOFVe_u1Mt51L
+# 9bTfVOFVe_u1Mt51L ---> my template id
