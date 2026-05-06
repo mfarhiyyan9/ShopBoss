@@ -235,54 +235,96 @@ def admin():
 
 # -------- PANEL --------
 
-@ShopBoss.route("/panel", methods=["GET","POST"])
+@ShopBoss.route("/panel", methods=["GET", "POST"])
 def panel():
+    # 🔒 Protect panel (optional but recommended)
+    if session.get("admin") != True:
+        return redirect("/admin")
+
     conn = db()
 
     if request.method == "POST":
-        if "add" in request.form:
-            conn.execute("INSERT INTO products (name,price,image) VALUES (?,?,?)",
-                         (request.form["name"], request.form["price"], request.form["image"]))
+        action = request.form.get("action")
 
-        elif "delete" in request.form:
-            conn.execute("DELETE FROM products WHERE id=?", (request.form["id"],))
+        name = request.form.get("name")
+        price = request.form.get("price")
+        image = request.form.get("image")
+        pid = request.form.get("id")
 
-        elif "update" in request.form:
-            conn.execute("UPDATE products SET name=?, price=?, image=? WHERE id=?",
-                         (request.form["name"], request.form["price"], request.form["image"], request.form["id"]))
+        # 🟢 ADD PRODUCT
+        if action == "add":
+            conn.execute(
+                "INSERT INTO products (name,price,image) VALUES (?,?,?)",
+                (name, price, image)
+            )
+
+        # 🔴 DELETE PRODUCT
+        elif action == "delete":
+            conn.execute(
+                "DELETE FROM products WHERE id=?",
+                (pid,)
+            )
+
+        # 🔵 UPDATE PRODUCT (FIXED ✅)
+        elif action == "update":
+            conn.execute(
+                "UPDATE products SET name=?, price=?, image=? WHERE id=?",
+                (name, price, image, pid)
+            )
 
         conn.commit()
 
     products = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
 
-    html = header() + "<div style='padding:30px;'>"
+    # 🖼️ UI
+    html = header() + """
+    <div style='padding:30px;background:#eaeded;'>
 
-    html += """
-    <form method="post">
-        <input name="name" placeholder="Name">
-        <input name="price" placeholder="Price">
-        <input name="image" placeholder="Image URL">
-        <button name="add">Add</button>
-    </form><hr>
+    <h2>Admin Panel</h2>
+
+    <!-- ADD PRODUCT -->
+    <form method="post" style="background:white;padding:15px;margin-bottom:20px;">
+        <h3>Add Product</h3>
+        <input name="name" placeholder="Product Name" required style="padding:8px;margin:5px;">
+        <input name="price" placeholder="Price" required style="padding:8px;margin:5px;">
+        <input name="image" placeholder="Image URL" required style="padding:8px;margin:5px;">
+        <button name="action" value="add" style="padding:8px 15px;background:green;color:white;border:none;">
+            Add
+        </button>
+    </form>
+
+    <hr>
     """
 
+    # 📦 PRODUCT LIST
     for p in products:
         html += f"""
-       <form method="post">
-    <input type="hidden" name="id" value="{p[0]}">
-    
-    <input name="name" value="{p[1]}">
-    <input name="price" value="{p[2]}">
-    <input name="image" value="{p[3]}">
+        <form method="post" style="background:white;margin:10px;padding:15px;display:flex;align-items:center;gap:10px;">
 
-    <button name="update">Update</button>
-    <button name="delete">Delete</button>
-    </form>
-    """
+            <input type="hidden" name="id" value="{p[0]}">
+
+            <img src="{p[3]}" style="width:80px;height:80px;object-fit:cover;">
+
+            <input name="name" value="{p[1]}" style="padding:5px;width:150px;">
+            <input name="price" value="{p[2]}" style="padding:5px;width:80px;">
+            <input name="image" value="{p[3]}" style="padding:5px;width:200px;">
+
+            <button name="action" value="update"
+                style="background:blue;color:white;padding:6px 12px;border:none;">
+                Update
+            </button>
+
+            <button name="action" value="delete"
+                style="background:red;color:white;padding:6px 12px;border:none;">
+                Delete
+            </button>
+
+        </form>
+        """
 
     html += "</div>"
-    return html 
+    return html
     #--- ADDRESS --------
 from flask import request, session, redirect, send_from_directory
 
