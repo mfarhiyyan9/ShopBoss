@@ -184,23 +184,14 @@ def remove(id):
     session["cart"] = cart
     return redirect("/cart")
 # -------- LOGIN --------
-@ShopBoss.route("/login", methods=["GET","POST"])
-def login():
+@ShopBoss.route("/admin", methods=["GET","POST"])
+def admin():
     if request.method == "POST":
-        conn = db()
-        user = conn.execute("SELECT * FROM users WHERE username=? AND password=?",
-                            (request.form["u"], request.form["p"])).fetchone()
-        conn.close()
+        if (request.form["u"] in ["admin"]) and (request.form["p"] in ["admin","owner"]):
+            session["admin"] = True   # ✅ THIS WAS MISSING
+            return redirect("/panel")
 
-        if user:
-            session["user"] = request.form["u"]
-            return redirect("/")
-
-        return "INVALID LOGIN"
-        
-
-    return form_ui("----------User Login---------", [
-        '<input name="m" placeholder="Mobile No" style="width:100%;padding:10px;margin:10px 0;">',
+    return form_ui("----------Admin Login---------", [
         '<input name="u" placeholder="Username" style="width:100%;padding:10px;margin:10px 0;">',
         '<input name="p" type="password" placeholder="Password" style="width:100%;padding:10px;margin:10px 0;">'
     ], "LOGIN")
