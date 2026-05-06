@@ -234,6 +234,7 @@ def admin():
     ], "LOGIN")
 
 # -------- PANEL --------
+
 @ShopBoss.route("/panel", methods=["GET","POST"])
 def panel():
     conn = db()
@@ -242,12 +243,16 @@ def panel():
         if "add" in request.form:
             conn.execute("INSERT INTO products (name,price,image) VALUES (?,?,?)",
                          (request.form["name"], request.form["price"], request.form["image"]))
-        if "delete" in request.form:
+
+        elif "delete" in request.form:
             conn.execute("DELETE FROM products WHERE id=?", (request.form["id"],))
+
+        elif "update" in request.form:
+            conn.execute("UPDATE products SET name=?, price=?, image=? WHERE id=?",
+                         (request.form["name"], request.form["price"], request.form["image"], request.form["id"]))
+
         conn.commit()
-    if "update" in request.form:
-        conn.execute("UPDATE products SET name=?, price=?, image=? WHERE id=?",
-                 (request.form["name"], request.form["price"], request.form["image"], request.form["id"]))
+
     products = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
 
@@ -277,8 +282,8 @@ def panel():
     """
 
     html += "</div>"
-    return html
-# -------- ADDRESS --------
+    return html 
+    #--- ADDRESS --------
 from flask import request, session, redirect, send_from_directory
 
 # ✅ QR ROUTE (since qr.png is in main folder)
